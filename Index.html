@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 Space Race - Multiplayer Game</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script type="module">
+        // ✅ Firebase Configuration (ใส่แล้ว!)
+        const firebaseConfig = {
+            apiKey: "AIzaSyDGAXmqmbn4fV47eNXa8PSP4N_hIWxmsuE",
+            authDomain: "space-race-game-d20ad.firebaseapp.com",
+            databaseURL: "https://space-race-game-d20ad-default-rtdb.asia-southeast1.firebasedatabase.app",
+            projectId: "space-race-game-d20ad",
+            storageBucket: "space-race-game-d20ad.firebasestorage.app",
+            messagingSenderId: "691384338211",
+            appId: "1:691384338211:web:f17b92c8ff574daa012e96",
+            measurementId: "G-0YV3DXD5RM"
+        };
+
+        // Firebase Imports
+        import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js';
+        import { getDatabase, ref, set, onValue, update, get, remove, push } from 'https://www.gstatic.com/firebasejs/10.7.1/firebase-database.js';
+
+        const app = initializeApp(firebaseConfig);
+        const database = getDatabase(app);
+
+        // Game State
+        window.GameState = {
+            currentScreen: 'home',
+            playerName: '',
+            playerId: '',
+            roomCode: '',
+            isHost: false,
+            currentRoom: null,
+            roomListener: null
+        };
+
+        // Planet Data
+        const PLANETS = {
+            1: { name: 'ดวงอาทิตย์', emoji: '☀️', hp: 0, desc: 'จุดเริ่มต้น! พร้อมออกเดินทาง' },
+            7: { name: 'พุธ', emoji: '🔥', hp: -10, desc: 'ร้อนแรง! เสีย HP 10' },
+            13: { name: 'ศุกร์', emoji: '🌋', hp: -20, desc: 'นรกเตาไฟ! เสีย HP 20' },
+            18: { name: 'โลก', emoji: '🌍', hp: 50, desc: 'บ้านเกิด! ฟื้นฟู HP +50' },
+            19: { name: 'ดวงจันทร์', emoji: '🌙', hp: 25, desc: 'ฐานดวงจันทร์ ฟื้น HP +25' },
+            20: { name: 'ISS', emoji: '🛰️', hp: 0, desc: 'สถานีอวกาศ ได้ไอเทม!' },
+            26: { name: 'อังคาร', emoji: '🔴', hp: -5, desc: 'พายุฝุ่น เสีย HP 5' },
+            27: { name: 'Perseverance', emoji: '🤖', hp: 10, desc: 'รถแมงมุม HP +10' },
+            28: { name: 'Phobos', emoji: '🔴', hp: 10, desc: 'ดาวบริวาร HP +10' },
+            33: { name: 'แถบดาวเคราะห์น้อย', emoji: '🌟', hp: -25, desc: 'ชนดาวเคราะห์น้อย! HP -25' },
+            34: { name: 'แถบดาวเคราะห์น้อย', emoji: '🌟', hp: -25, desc: 'ชนดาวเคราะห์น้อย! HP -25' },
+            35: { name: 'แถบดาวเคราะห์น้อย', emoji: '🌟', hp: -25, desc: 'ชนดาวเคราะห์น้อย! HP -25' },
+            40: { name: 'พฤหัสบดี', emoji: '🪐', hp: 0, desc: 'ดาวยักษ์! แรงโน้มถ่วงสูง' },
+            41: { name: 'Europa', emoji: '🌊', hp: 0, desc: 'มหาสมุทรน้ำแข็ง ได้ไอเทม!' },
+            42: { name: 'Io', emoji: '🔥', hp: -15, desc: 'ภูเขาไฟระเบิด! HP -15' },
+            47: { name: 'เสาร์', emoji: '💍', hp: 0, desc: 'วงแหวน ได้โล่พิเศษ!' },
+            48: { name: 'Titan', emoji: '🌕', hp: 0, desc: 'ทะเลสารมีเทน เดิน +5' },
+            49: { name: 'Enceladus', emoji: '❄️', hp: -10, desc: 'พ่นน้ำแข็ง HP -10' },
+            53: { name: 'ยูเรนัส', emoji: '💎', hp: 0, desc: 'หมุนตัวแปลก สลับตำแหน่ง!' },
+            57: { name: 'เนปจูน', emoji: '🔵', hp: -15, desc: 'พายุมหึมา HP -15' },
+            58: { name: 'Triton', emoji: '🔵', hp: -10, desc: 'เย็นจัด HP -10' },
+            60: { name: 'พลูโต', emoji: '❄️', hp: 0, desc: 'เป้าหมาย! คนแรกที่มาถึง' }
+        };
+
+        // Items
+        const ITEMS = [
+            { id: 'fuel', name: 'เชื้อเพลิง', emoji: '🚀', type: 'move', value: 3 },
+            { id: 'solar', name: 'พลังแสง', emoji: '⚡', type: 'hp', value: 30 },
+            { id: 'shield', name: 'โล่', emoji: '🛡️', type: 'shield', value: 1 },
+            { id: 'ice', name: 'น้ำแข็ง', emoji: '🧊', type: 'freeze', value: 15 },
+            { id: 'medicine', name: 'ยา', emoji: '💊', type: 'hp', value: 40 },
+            { id: 'hyperdrive', name: 'ไฮเปอร์', emoji: '⏩', type: 'move', value: 5 },
+            { id: 'crystal', name: 'คริสตัล', emoji: '💎', type: 'hp', value: 60 },
+            { id: 'meteor', name: 'ดาวตก', emoji: '☄️', type: 'attack', value: 20 },
+            { id: 'blackhole', name: 'หลุมดำ', emoji: '🌑', type: 'skip', value: 2 },
+            { id: 'bomb', name: 'ระเบิด', emoji: '🧨', type: 'damage', value: 25 }
+        ];
+
+        // Utility Functions
+        function generateRoomCode() {
+            return Math.random().toString(36).substr(2, 6).toUpperCase();
+        }
+
+        function generatePlayerId() {
+            return 'P' + Date.now().toString(36) + Math.random().toString(36).substr(2, 5);
+        }
+
+        function getRandomItem() {
+            return ITEMS[Math.floor(Math.random() * ITEMS.length)];
+        }
+
+        // Show Screen
+        window.showScreen = function(screenName) {
+            document.querySelectorAll('.screen').forEach(s => s.classList.add('hidden'));
+            document.getElementById(`${screenName}-screen`)?.classList.remove('hidden');
+            GameState.currentScreen = screenName;
+        };
+
+        // Create Room
+        window.createRoom = async function() {
+            const playerName = document.getElementById('player-name-create').value.trim();
+            if (!playerName) {
+                showMessage('กรุณาใส่ชื่อผู้เล่น', 'error');
+                return;
+            }
+
+            const roomCode = generateRoomCode();
+            const playerId = generatePlayerId();
+            
+            GameState.playerName = playerName;
+            GameState.playerId = playerId;
+            GameState.roomCode = roomCode;
+            GameState.isHost = true;
+
+            const roomData = {
+                code: roomCode,
+                host: playerId,
+                status: 'waiting',
+                created: Date.now(),
+                players: {
+                    [playerId]: {
+                        name: playerName,
+                        position: 1,
+                        hp: 100,
+                        maxHp: 100,
+                        items: [],
+                        status: 'active',
+                        isHost: true,
+                        color: getRandomColor(),
+                        joined: Date.now()
+                    }
+                },
+                game: {
+                    started: false,
+                    currentTurn: 0,
+                    turnPlayer: playerId,
+                    round: 1,
+                    lastDice: 0
+                }
+            };
+
+            try {
+                await set(ref(database, `rooms/${roomCode}`), roomData);
+                listenToRoom(roomCode);
+                showScreen('lobby');
+                updateLobby();
+                showMessage('สร้างห้องสำเร็จ!', 'success');
+            } catch (error) {
+                showMessage('เกิดข้อผิดพลาด: ' + error.message, 'error');
+            }
+        };
+
+        // Join Room
+        window.joinRoom = async function() {
+            const playerName = document.getElementById('player-name-join').value.trim();
+            const roomCode = document.getElementById('room-code-input').value.trim().toUpperCase();
+            
+            if (!playerName || !roomCode) {
+                showMessage('กรุณากรอกข้อมูลให้ครบ', 'error');
+                return;
+            }
+
+            try {
+                const snapshot = await get(ref(database, `rooms/${roomCode}`));
+                if (!snapshot.exists()) {
+                    showMessage('ไม่พบห้องนี้', 'error');
+                    return;
+                }
+
+                const roomData = snapshot.val();
+                if (roomData.status === 'playing') {
+                    showMessage('เกมเริ่มแล้ว', 'error');
+                    return;
+                }
+
+                const playerCount = Object.keys(roomData.players || {}).length;
+                if (playerCount >= 4) {
+                    showMessage('ห้องเต็ม (4 คน)', 'error');
+                    return;
+                }
+
+                const playerId = generatePlayerId();
+                GameState.playerName = playerName;
+                GameState.playerId = playerId;
+                GameState.roomCode = roomCode;
+                GameState.isHost = false;
+
+                await update(ref(database, `rooms/${roomCode}/players/${playerId}`), {
+                    name: playerName,
+                    position: 1,
+                    hp: 100,
+                    maxHp: 100,
+                    items: [],
+                    status: 'active',
+                    isHost: false,
+                    color: getRandomColor(),
+                    joined: Date.now()
+                });
+
+                listenToRoom(roomCode);
+                showScreen('lobby');
+                updateLobby();
+                showMessage('เข้าร่วมห้องสำเร็จ!', 'success');
+            } catch (error) {
+                showMessage('เกิดข้อผิดพลาด: ' + error.message, 'error');
+            }
+        };
+
+        // Listen to Room
+        function listenToRoom(roomCode) {
+            if (GameState.roomListener) {
+                GameState.roomListener(); // Unsubscribe previous
+            }
+
+            const roomRef = ref(database, `rooms/${roomCode}`);
+            GameState.roomListener = onValue(roomRef, (snapshot) => {
+                if (!snapshot.exists()) {
+                    showMessage('ห้องถูกปิด', 'error');
+                    leaveRoom();
+                    return;
+                }
+
+                GameState.currentRoom = snapshot.val();
+                
+                if (GameState.currentScreen === 'lobby') {
+                    updateLobby();
+                } else if (GameState.currentScreen === 'game') {
+                    updateGame();
+                }
+            });
+        }
+
+        // Start Game
+        window.startGame = async function() {
+            if (!GameState.isHost) {
+                showMessage('เฉพาะ Host เท่านั้น', 'error');
+                return;
+            }
+
+            const players = Object.keys(GameState.currentRoom.players);
+            if (players.length < 2) {
+                showMessage('ต้องมีผู้เล่น 2 คนขึ้นไป', 'error');
+                return;
+            }
+
+            await update(ref(database, `rooms/${GameState.roomCode}`), {
+                status: 'playing'
+            });
+
+            await update(ref(database, `rooms/${GameState.roomCode}/game`), {
+                started: true,
+                currentTurn: 0,
+                turnPlayer: players[0],
+                round: 1
+            });
+
+            showScreen('game');
+            updateGame();
+            showMessage('เกมเริ่มแล้ว!', 'success');
+        };
+
+        // Roll Dice
+        window.rollDice = async function() {
+            if (!isMyTurn()) {
+                showMessage('ยังไม่ถึงตาคุณ', 'error');
+                return;
+            }
+
+            const player = GameState.currentRoom.players[GameState.playerId];
+            if (player.status === 'resting') {
+                showMessage('คุณกำลังพักฟื้น', 'error');
+                return;
+            }
+
+            // Animate dice
+            const btn = document.getElementById('roll-btn');
+            btn.disabled = true;
+            btn.textContent = '🎲 กำลังทอย...';
+
+            const dice = Math.floor(Math.random() * 6) + 1;
+            const newPos = Math.min(player.position + dice, 60);
+
+            // Update position
+            await update(ref(database, `rooms/${GameState.roomCode}/players/${GameState.playerId}`), {
+                position: newPos
+            });
+
+            await update(ref(database, `rooms/${GameState.roomCode}/game`), {
+                lastDice: dice
+            });
+
+            showMessage(`ทอยได้ ${dice}! 🎲`, 'info');
+
+            // Apply planet effect
+            setTimeout(async () => {
+                await applyPlanetEffect(newPos);
+                
+                // Give random item
+                const item = getRandomItem();
+                const currentItems = player.items || [];
+                currentItems.push(item);
+                await update(ref(database, `rooms/${GameState.roomCode}/players/${GameState.playerId}`), {
+                    items: currentItems
+                });
+
+                showMessage(`ได้ไอเทม: ${item.emoji} ${item.name}`, 'success');
+
+                // Next turn
+                setTimeout(() => {
+                    nextTurn();
+                    btn.disabled = false;
+                    btn.textContent = '🎲 ทอยลูกเต๋า';
+                }, 1500);
+            }, 1000);
+        };
+
+        // Apply Planet Effect
+        async function applyPlanetEffect(position) {
+            const planet = PLANETS[position];
+            if (!planet || planet.hp === 0) return;
+
+            const player = GameState.currentRoom.players[GameState.playerId];
+            const newHp = Math.max(0, Math.min(player.hp + planet.hp, 100));
+            
+            await update(ref(database, `rooms/${GameState.roomCode}/players/${GameState.playerId}`), {
+                hp: newHp
+            });
+
+            if (planet.hp > 0) {
+                showMessage(`${planet.emoji} ${planet.name}: HP +${planet.hp}`, 'success');
+            } else {
+                showMessage(`${planet.emoji} ${planet.name}: HP ${planet.hp}`, 'error');
+            }
+
+            // Check if HP = 0
+            if (newHp === 0) {
+                await update(ref(database, `rooms/${GameState.roomCode}/players/${GameState.playerId}`), {
+                    status: 'resting',
+                    restTurns: 3
+                });
+                showMessage('❤️‍🩹 HP หมด! พักฟื้น 3 ตา', 'error');
+            }
+
+            // Check win
+            if (position === 60) {
+                await update(ref(database, `rooms/${GameState.roomCode}/players/${GameState.playerId}`), {
+                    status: 'finished',
+                    finishTime: Date.now()
+                });
+                showMessage('🏆 ถึงพลูโตแล้ว!', 'success');
+                checkWinner();
+            }
+        }
+
+        // Next Turn
+        async function nextTurn() {
+            const game = GameState.currentRoom.game;
+            const players = Object.keys(GameState.currentRoom.players);
+            const nextIndex = (game.currentTurn + 1) % players.length;
+
+            await update(ref(database, `rooms/${GameState.roomCode}/game`), {
+                currentTurn: nextIndex,
+                turnPlayer: players[nextIndex],
+                round: nextIndex === 0 ? game.round + 1 : game.round
+            });
+
+            // Check resting players
+            const nextPlayer = GameState.currentRoom.players[players[nextIndex]];
+            if (nextPlayer.status === 'resting' && nextPlayer.restTurns > 0) {
+                const newRestTurns = nextPlayer.restTurns - 1;
+                
+                if (newRestTurns === 0) {
+                    await update(ref(database, `rooms/${GameState.roomCode}/players/${players[nextIndex]}`), {
+                        status: 'active',
+                        restTurns: 0,
+                        hp: 50
+                    });
+                    showMessage(`${nextPlayer.name} ฟื้นแล้ว! HP = 50`, 'success');
+                } else {
+                    await update(ref(database, `rooms/${GameState.roomCode}/players/${players[nextIndex]}`), {
+                        restTurns: newRestTurns
+                    });
+                    setTimeout(() => nextTurn(), 1000);
+                }
+            }
+        }
+
+        // Check Winner
+        function checkWinner() {
+            const players = GameState.currentRoom.players;
+            const finishedPlayers = Object.entries(players)
+                .filter(([id, p]) => p.status === 'finished')
+                .sort((a, b) => b[1].hp - a[1].hp);
+
+            if (finishedPlayers.length > 0) {
+                const winner = finishedPlayers[0][1];
+                showMessage(`🎉 ${winner.name} ชนะ! HP: ${winner.hp}`, 'success');
+            }
+        }
+
+        // Is My Turn
+        function isMyTurn() {
+            return GameState.currentRoom?.game?.turnPlayer === GameState.playerId;
+        }
+
+        // Update Lobby
+        function updateLobby() {
+            const players = GameState.currentRoom?.players || {};
+            const playerList = document.getElementById('player-list');
+            const roomCodeDisplay = document.getElementById('room-code-display');
+            
+            roomCodeDisplay.textContent = GameState.roomCode;
+            
+            playerList.innerHTML = Object.entries(players).map(([id, player]) => `
+                <div class="bg-gray-700 p-4 rounded-lg flex items-center gap-3 ${id === GameState.playerId ? 'ring-2 ring-yellow-400' : ''}">
+                    <div class="w-12 h-12 rounded-full flex items-center justify-center text-white font-bold text-lg" style="background: ${player.color}">
+                        ${player.name[0].toUpperCase()}
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-semibold">${player.name}</div>
+                        ${player.isHost ? '<div class="text-xs text-yellow-400">👑 Host</div>' : ''}
+                    </div>
+                    <div class="text-green-400 text-2xl">✓</div>
+                </div>
+            `).join('');
+
+            const startBtn = document.getElementById('start-btn');
+            if (GameState.isHost) {
+                startBtn.classList.remove('hidden');
+                startBtn.disabled = Object.keys(players).length < 2;
+            } else {
+                startBtn.classList.add('hidden');
+            }
+        }
+
+        // Update Game
+        function updateGame() {
+            const players = GameState.currentRoom?.players || {};
+            const game = GameState.currentRoom?.game || {};
+            const board = document.getElementById('game-board');
+            const stats = document.getElementById('player-stats');
+            const turnInfo = document.getElementById('turn-info');
+            const myItems = document.getElementById('my-items');
+
+            // Current turn
+            const currentPlayer = players[game.turnPlayer];
+            turnInfo.innerHTML = `
+                <div class="text-center">
+                    <div class="text-sm text-gray-400">รอบที่ ${game.round}</div>
+                    <div class="text-xl font-bold text-yellow-400">
+                        ตาของ: ${currentPlayer?.name || '...'}
+                    </div>
+                    ${game.lastDice > 0 ? `<div class="text-2xl mt-2">🎲 ${game.lastDice}</div>` : ''}
+                </div>
+            `;
+
+            // Board
+            board.innerHTML = Array.from({length: 60}, (_, i) => {
+                const pos = i + 1;
+                const planet = PLANETS[pos];
+                const playersHere = Object.entries(players).filter(([id, p]) => p.position === pos);
+                
+                return `
+                    <div class="relative aspect-square rounded-lg flex flex-col items-center justify-center text-xs transition-all ${planet ? 'bg-gradient-to-br from-purple-600 to-blue-600' : 'bg-gray-700'}">
+                        <div class="text-2xl">${planet?.emoji || '⭐'}</div>
+                        <div class="text-[8px] mt-1 opacity-60">${pos}</div>
+                        ${playersHere.length > 0 ? `
+                            <div class="absolute -top-1 -right-1 flex gap-0.5">
+                                ${playersHere.map(([id, p]) => `
+                                    <div class="w-3 h-3 rounded-full border border-white" style="background: ${p.color}"></div>
+                                `).join('')}
+                            </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            // Player stats
+            stats.innerHTML = Object.entries(players).map(([id, player]) => `
+                <div class="bg-gray-700 p-4 rounded-lg ${id === GameState.playerId ? 'ring-2 ring-yellow-400' : ''}">
+                    <div class="flex items-center gap-2 mb-3">
+                        <div class="w-10 h-10 rounded-full flex items-center justify-center text-white font-bold" style="background: ${player.color}">
+                            ${player.name[0].toUpperCase()}
+                        </div>
+                        <div class="flex-1">
+                            <div class="font-semibold">${player.name}</div>
+                            ${id === game.turnPlayer ? '<div class="text-xs text-yellow-400">▶ ตาของคน</div>' : ''}
+                        </div>
+                    </div>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex items-center justify-between">
+                            <span>🚀 ตำแหน่ง</span>
+                            <span class="font-bold">${player.position}/60</span>
+                        </div>
+                        <div class="w-full bg-gray-600 rounded-full h-2">
+                            <div class="bg-red-500 h-2 rounded-full transition-all" style="width: ${(player.hp/player.maxHp)*100}%"></div>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span>❤️ HP</span>
+                            <span class="font-bold">${player.hp}/${player.maxHp}</span>
+                        </div>
+                        <div class="flex items-center justify-between">
+                            <span>🎒 ไอเทม</span>
+                            <span class="font-bold">${(player.items || []).length}</span>
+                        </div>
+                        ${player.status === 'resting' ? `
+                            <div class="text-xs text-red-400 text-center">💤 พักฟื้น ${player.restTurns} ตา</div>
+                        ` : ''}
+                        ${player.status === 'finished' ? `
+                            <div class="text-xs text-green-400 text-center">🏆 ถึงเป้าหมายแล้ว!</div>
+                        ` : ''}
+                    </div>
+                </div>
+            `).join('');
+
+            // My items
+            const myPlayer = players[GameState.playerId];
+            if (myPlayer) {
+                myItems.innerHTML = (myPlayer.items || []).map((item, idx) => `
+                    <button 
+                        onclick="useItem(${idx})"
+                        class="bg-gray-600 hover:bg-gray-500 p-3 rounded-lg transition-all transform hover:scale-105 text-center"
+                        title="${item.name}"
+                    >
+                        <div class="text-3xl">${item.emoji}</div>
+                        <div class="text-xs mt-1">${item.name}</div>
+                    </button>
+                `).join('') || '<div class="text-gray-500 text-sm col-span-3 text-center py-4">ยังไม่มีไอเทม</div>';
+            }
+
+            // Roll button
+            const rollBtn = document.getElementById('roll-btn');
+            const myTurn = isMyTurn();
+            rollBtn.disabled = !myTurn || myPlayer?.status === 'resting';
+            
+            if (myPlayer?.status === 'resting') {
+                rollBtn.textContent = '💤 กำลังพักฟื้น...';
+            } else if (myTurn) {
+                rollBtn.textContent = '🎲 ทอยลูกเต๋า';
+            } else {
+                rollBtn.textContent = '⏳ รอตาของคุณ...';
+            }
+        }
+
+        // Use Item (Placeholder)
+        window.useItem = function(itemIndex) {
+            const player = GameState.currentRoom.players[GameState.playerId];
+            const item = player.items[itemIndex];
+            
+            if (!item) return;
+            
+            showMessage(`ใช้ไอเทม: ${item.emoji} ${item.name} (ระบบยังไม่สมบูรณ์)`, 'info');
+            // TODO: Implement item effects
+        };
+
+        // Leave Room
+        window.leaveRoom = async function() {
+            if (confirm('ต้องการออกจากห้อง?')) {
+                if (GameState.roomListener) {
+                    GameState.roomListener();
+                }
+                
+                if (GameState.roomCode && GameState.playerId) {
+                    await remove(ref(database, `rooms/${GameState.roomCode}/players/${GameState.playerId}`));
+                }
+                
+                GameState.roomCode = '';
+                GameState.playerId = '';
+                GameState.currentRoom = null;
+                
+                showScreen('home');
+                showMessage('ออกจากห้องแล้ว', 'info');
+            }
+        };
+
+        // Show Message
+        function showMessage(text, type = 'info') {
+            const container = document.getElementById('message-container');
+            const msg = document.createElement('div');
+            
+            const colors = {
+                success: 'bg-green-600',
+                error: 'bg-red-600',
+                info: 'bg-blue-600'
+            };
+            
+            msg.className = `${colors[type]} text-white px-6 py-3 rounded-lg shadow-lg mb-2 animate-slide-in`;
+            msg.textContent = text;
+            
+            container.appendChild(msg);
+            
+            setTimeout(() => {
+                msg.remove();
+            }, 3000);
+        }
+
+        // Get Random Color
+        function getRandomColor() {
+            const colors = [
+                'linear-gradient(135deg, #667eea 0%, #764ba2 100%)',
+                'linear-gradient(135deg, #f093fb 0%, #f5576c 100%)',
+                'linear-gradient(135deg, #4facfe 0%, #00f2fe 100%)',
+                'linear-gradient(135deg, #43e97b 0%, #38f9d7 100%)',
+                'linear-gradient(135deg, #fa709a 0%, #fee140 100%)',
+                'linear-gradient(135deg, #30cfd0 0%, #330867 100%)'
+            ];
+            return colors[Math.floor(Math.random() * colors.length)];
+        }
+
+        // Initialize
+        window.addEventListener('DOMContentLoaded', () => {
+            showScreen('home');
+        });
+    </script>
+    <style>
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+        .float { animation: float 3s ease-in-out infinite; }
+        
+        @keyframes slide-in {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        .animate-slide-in { animation: slide-in 0.3s ease-out; }
+
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(139, 92, 246, 0.5); }
+            50% { box-shadow: 0 0 40px rgba(139, 92, 246, 0.8); }
+        }
+        .pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-gray-900 via-purple-900 to-black min-h-screen text-white">
+    
+    <!-- Message Container -->
+    <div id="message-container" class="fixed top-4 right-4 z-50 space-y-2 max-w-sm"></div>
+
+    <!-- Home Screen -->
+    <div id="home-screen" class="screen min-h-screen flex items-center justify-center p-4">
+        <div class="max-w-2xl w-full">
+            <div class="text-center mb-12 float">
+                <h1 class="text-6xl font-bold mb-4 bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                    🚀 Space Race
+                </h1>
+                <p class="text-xl text-gray-300">ผจญภัยสู่พลูโตกับเพื่อนๆ!</p>
+            </div>
+
+            <div class="grid md:grid-cols-2 gap-6">
+                <div class="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-8 border border-purple-500 pulse-glow">
+                    <h2 class="text-2xl font-bold mb-6 text-center">🎮 สร้างห้อง</h2>
+                    <input type="text" id="player-name-create" placeholder="ชื่อของคุณ" maxlength="20" class="w-full px-4 py-3 bg-gray-700 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-purple-500" />
+                    <button onclick="createRoom()" class="w-full bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 py-3 rounded-lg font-bold transition-all transform hover:scale-105">
+                        สร้างห้องใหม่
+                    </button>
+                </div>
+
+                <div class="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-8 border border-blue-500">
+                    <h2 class="text-2xl font-bold mb-6 text-center">🚪 เข้าห้อง</h2>
+                    <input type="text" id="player-name-join" placeholder="ชื่อของคุณ" maxlength="20" class="w-full px-4 py-3 bg-gray-700 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="text" id="room-code-input" placeholder="รหัสห้อง (6 ตัว)" maxlength="6" class="w-full px-4 py-3 bg-gray-700 rounded-lg mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500 uppercase" />
+                    <button onclick="joinRoom()" class="w-full bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 py-3 rounded-lg font-bold transition-all transform hover:scale-105">
+                        เข้าร่วมเกม
+                    </button>
+                </div>
+            </div>
+
+            <div class="mt-8 text-center text-gray-400 text-sm">
+                <p>🎮 เกมผจญภัยอวกาศ 2-4 คน | 🏆 แข่งขันกันถึงพลูโต</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lobby Screen -->
+    <div id="lobby-screen" class="screen hidden min-h-screen p-8">
+        <div class="max-w-4xl mx-auto">
+            <div class="text-center mb-8">
+                <h1 class="text-4xl font-bold mb-2">🎮 ห้องรอ</h1>
+                <div class="text-3xl text-purple-400 font-mono tracking-wider" id="room-code-display">------</div>
+                <p class="text-gray-400 mt-2">แชร์รหัสนี้ให้เพื่อนเพื่อเข้าร่วม</p>
+            </div>
+
+            <div class="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-8 border border-purple-500 mb-6">
+                <h2 class="text-xl font-bold mb-4">👥 ผู้เล่น (2-4 คน)</h2>
+                <div id="player-list" class="space-y-3"></div>
+            </div>
+
+            <div class="flex gap-4">
+                <button onclick="leaveRoom()" class="flex-1 bg-gray-700 hover:bg-gray-600 py-3 rounded-lg font-bold transition-all">
+                    ออกจากห้อง
+                </button>
+                <button id="start-btn" onclick="startGame()" class="flex-1 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 py-3 rounded-lg font-bold transition-all transform hover:scale-105 hidden disabled:opacity-50">
+                    🚀 เริ่มเกม!
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game Screen -->
+    <div id="game-screen" class="screen hidden min-h-screen p-4">
+        <div class="max-w-7xl mx-auto">
+            <!-- Header -->
+            <div class="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-4 mb-4 flex items-center justify-between">
+                <div class="text-2xl font-bold">🚀 Space Race</div>
+                <div id="turn-info" class="flex-1"></div>
+                <button onclick="leaveRoom()" class="bg-red-600 hover:bg-red-700 px-4 py-2 rounded-lg transition-all">
+                    ออกจากเกม
+                </button>
+            </div>
+
+            <div class="grid lg:grid-cols-4 gap-4">
+                <!-- Board -->
+                <div class="lg:col-span-3 space-y-4">
+                    <div class="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-6 border border-purple-500">
+                        <h2 class="text-xl font-bold mb-4">🗺️ แผนที่อวกาศ (60 ช่อง)</h2>
+                        <div id="game-board" class="grid grid-cols-10 gap-2 max-h-[500px] overflow-auto"></div>
+                    </div>
+
+                    <div class="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-6 border border-blue-500">
+                        <h2 class="text-xl font-bold mb-4">🎒 ไอเทมของฉัน</h2>
+                        <div id="my-items" class="grid grid-cols-6 gap-3"></div>
+                    </div>
+
+                    <div class="text-center">
+                        <button id="roll-btn" onclick="rollDice()" class="bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 px-12 py-4 rounded-lg font-bold text-xl transition-all transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
+                            🎲 ทอยลูกเต๋า
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Stats -->
+                <div class="lg:col-span-1">
+                    <div class="bg-gray-800/50 backdrop-blur-lg rounded-2xl p-6 border border-blue-500 sticky top-4">
+                        <h2 class="text-xl font-bold mb-4">📊 ผู้เล่น</h2>
+                        <div id="player-stats" class="space-y-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+</body>
+  </html>
